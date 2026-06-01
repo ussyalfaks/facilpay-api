@@ -133,4 +133,14 @@ export class UsersService {
     this.users[userIndex].updatedAt = new Date();
     this.logger.info({ userId: id }, 'User email verified');
   }
+
+  async updatePassword(id: string, hashedPassword: string): Promise<void> {
+    const userIndex = this.users.findIndex((user) => user.id === id);
+    if (userIndex === -1) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    this.users[userIndex].password = hashedPassword;
+    this.users[userIndex].updatedAt = new Date();
+    this.logger.info({ userId: id }, 'User password updated');
+  }
 }

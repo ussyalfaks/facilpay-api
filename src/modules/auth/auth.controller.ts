@@ -11,6 +11,8 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from '../users/dto/register.dto';
 import { LoginDto } from '../users/dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailQueryDto } from './dto/verify-email-query.dto';
 import { AuthThrottle } from '../throttler/throttler.decorator';
 import { Public } from './decorators/public.decorator';
@@ -25,6 +27,7 @@ import {
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 
 @ApiTags('auth')
@@ -228,5 +231,78 @@ export class AuthController {
   @ApiNoContentResponse({ description: 'Refresh token revoked.' })
   async logout(@Body() dto: RefreshTokenDto) {
     await this.authService.logout(dto.refresh_token);
+  }
+
+  @AuthThrottle()
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request password reset',
+    description:
+      'Sends a password reset email with a time-limited token (1 hour). Returns 200 even if email does not exist to prevent user enumeration. Rate limited to 5 requests per 15 minutes.',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiOkResponse({
+    description: 'Password reset email sent (if account exists).',
+    schema: {
+      example: {
+        message:
+          'If an account with that email exists, a password reset link has been sent.',
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many requests. Rate limit exceeded.',
+    schema: {
+      example: {
+        statusCode: 429,
+        message: 'ThrottlerException: Too Many Requests',
+      },
+    },
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @AuthThrottle()
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reset password',
+    description:
+      'Resets the password using a valid token from the reset email. Invalidates all existing refresh tokens. Rate limited to 5 requests per 15 minutes.',
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiOkResponse({
+    description: 'Password reset successful. All sessions invalidated.',
+    schema: {
+      example: {
+        message: 'Password reset successful. Please log in again.',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid, expired, or already-used token.',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Invalid or expired password reset token',
+        error: 'Bad Request',
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many requests. Rate limit exceeded.',
+    schema: {
+      example: {
+        statusCode: 429,
+        message: 'ThrottlerException: Too Many Requests',
+      },
+    },
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 }

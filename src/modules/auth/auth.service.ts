@@ -2,19 +2,23 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomUUID, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { RegisterDto } from '../users/dto/register.dto';
 import { LoginDto } from '../users/dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UsersService } from '../users/users.service';
 import { AppLogger } from '../logger/logger.service';
 import { Logger } from 'pino';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { MailService } from './mail/mail.service';
 
 @Injectable()
@@ -27,6 +31,8 @@ export class AuthService {
     private mailService: MailService,
     @InjectRepository(RefreshToken)
     private refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(PasswordResetToken)
+    private passwordResetTokenRepository: Repository<PasswordResetToken>,
     appLogger: AppLogger,
   ) {
     this.logger = appLogger.child({ module: AuthService.name });
@@ -180,5 +186,105 @@ export class AuthService {
     });
 
     return rawToken;
+  }
+
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(forgotPasswordDto.email);
+
+    if (!user) {
+      this.logger.info(
+        { email: forgotPasswordDto.email },
+        'Password reset requested for non-existent email',
+      );
+      return {
+        message:
+          'If an account with that email exists, a password reset link has been sent.',
+      };
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    await this.passwordResetTokenRepository.save({
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+      used: false,
+    });
+
+    try {
+      await this.mailService.sendPasswordResetEmail(user.email, rawToken);
+      this.logger.info(
+        { userId: user.id, email: user.email },
+        'Password reset email sent',
+      );
+    } catch (err) {
+      this.logger.error(
+        { userId: user.id, error: err.message },
+        'Failed to send password reset email',
+      );
+    }
+
+    return {
+      message:
+        'If an account with that email exists, a password reset link has been sent.',
+    };
+  }
+
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    const tokenHash = createHash('sha256')
+      .update(resetPasswordDto.token)
+      .digest('hex');
+
+    const tokenRecord = await this.passwordResetTokenRepository.findOne({
+      where: { tokenHash },
+    });
+
+    if (
+      !tokenRecord ||
+      tokenRecord.used ||
+      tokenRecord.expiresAt < new Date()
+    ) {
+      throw new BadRequestException(
+        'Invalid or expired password reset token',
+      );
+    }
+
+    const user = await this.usersService
+      .findOne(tokenRecord.userId)
+      .catch(() => null);
+
+    if (!user || user.email !== resetPasswordDto.email) {
+      throw new BadRequestException(
+        'Invalid or expired password reset token',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(resetPasswordDto.newPassword, 10);
+    await this.usersService.updatePassword(user.id, hashedPassword);
+
+    await this.passwordResetTokenRepository.update(
+      { tokenHash },
+      { used: true },
+    );
+
+    await this.refreshTokenRepository.update(
+      { userId: user.id },
+      { revoked: true },
+    );
+
+    this.logger.info(
+      { userId: user.id, email: user.email },
+      'Password reset successful, all sessions invalidated',
+    );
+
+    return { message: 'Password reset successful. Please log in again.' };
   }
 }
