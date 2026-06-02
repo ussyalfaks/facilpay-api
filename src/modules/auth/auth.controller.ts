@@ -6,7 +6,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from '../users/dto/register.dto';
 import { LoginDto } from '../users/dto/login.dto';
@@ -14,10 +17,16 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailQueryDto } from './dto/verify-email-query.dto';
+import { TwoFactorCodeDto } from './dto/two-factor-code.dto';
 import { AuthThrottle } from '../throttler/throttler.decorator';
 import { Public } from './decorators/public.decorator';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { User } from '../users/user.entity';
 import {
   ApiBody,
+  ApiAcceptedResponse,
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -33,7 +42,7 @@ import {
 @ApiTags('auth')
 @Controller('v1/auth')
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService) {}
 
   @AuthThrottle()
   @Post('register')
@@ -125,6 +134,15 @@ export class AuthController {
       },
     },
   })
+  @ApiAcceptedResponse({
+    description: 'Password accepted, but a two-factor code is required.',
+    schema: {
+      example: {
+        '2fa_required': true,
+        message: 'Two-factor authentication code required',
+      },
+    },
+  })
   @ApiUnauthorizedResponse({
     description: 'Invalid credentials.',
     schema: {
@@ -155,8 +173,118 @@ export class AuthController {
       },
     },
   })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(loginDto);
+    if (result['2fa_required']) {
+      res.status(HttpStatus.ACCEPTED);
+    }
+    return result;
+  }
+
+  @Post('2fa/enable')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Start two-factor authentication setup',
+    description:
+      'Generates an encrypted TOTP secret for the current user and returns an otpauth URI that can be rendered as a QR code.',
+  })
+  @ApiOkResponse({
+    description: 'Two-factor setup secret generated.',
+    schema: {
+      example: {
+        secret: 'JBSWY3DPEHPK3PXP',
+        qrCodeUri:
+          'otpauth://totp/FacilPay:jane.doe%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=FacilPay&algorithm=SHA1&digits=6&period=30',
+        otpauthUri:
+          'otpauth://totp/FacilPay:jane.doe%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=FacilPay&algorithm=SHA1&digits=6&period=30',
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing or invalid bearer token.',
+  })
+  async enableTwoFactor(@CurrentUser() user: User) {
+    return this.authService.enableTwoFactor(user.id);
+  }
+
+  @Post('2fa/verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Verify and activate two-factor authentication',
+    description:
+      'Checks the current TOTP code from the authenticator app and turns 2FA on when valid.',
+  })
+  @ApiBody({ type: TwoFactorCodeDto })
+  @ApiOkResponse({
+    description: 'Two-factor authentication enabled.',
+    schema: {
+      example: {
+        message: 'Two-factor authentication enabled',
+        twoFactorEnabled: true,
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid TOTP code.',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Invalid two-factor code',
+        error: 'Unauthorized',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Two-factor setup has not been started.',
+  })
+  async verifyTwoFactor(
+    @CurrentUser() user: User,
+    @Body() dto: TwoFactorCodeDto,
+  ) {
+    return this.authService.verifyTwoFactor(user.id, dto);
+  }
+
+  @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Disable two-factor authentication',
+    description:
+      'Requires the current TOTP code and then removes the stored encrypted secret.',
+  })
+  @ApiBody({ type: TwoFactorCodeDto })
+  @ApiOkResponse({
+    description: 'Two-factor authentication disabled.',
+    schema: {
+      example: {
+        message: 'Two-factor authentication disabled',
+        twoFactorEnabled: false,
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid TOTP code.',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Invalid two-factor code',
+        error: 'Unauthorized',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Two-factor authentication is not enabled.',
+  })
+  async disableTwoFactor(
+    @CurrentUser() user: User,
+    @Body() dto: TwoFactorCodeDto,
+  ) {
+    return this.authService.disableTwoFactor(user.id, dto);
   }
 
   @Public()
