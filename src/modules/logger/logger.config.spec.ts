@@ -25,18 +25,20 @@ describe('logger config', () => {
 
     const combinedTarget = targets.find(
       (target) =>
-        target.target === 'pino-roll' &&
-        String(target.options?.file).includes('combined'),
+        target.target === 'pino/file' &&
+        String(target.options?.destination).includes('combined'),
     );
     const errorTarget = targets.find(
       (target) =>
-        target.target === 'pino-roll' &&
-        String(target.options?.file).includes('error'),
+        target.target === 'pino/file' &&
+        String(target.options?.destination).includes('error'),
     );
 
-    expect(combinedTarget?.options?.file).toBe(
+    expect(combinedTarget?.options?.destination).toBe(
       join(config.logDir, 'combined.log'),
     );
-    expect(errorTarget?.options?.file).toBe(join(config.logDir, 'error.log'));
+    expect(errorTarget?.options?.destination).toBe(
+      join(config.logDir, 'error.log'),
+    );
   });
 });

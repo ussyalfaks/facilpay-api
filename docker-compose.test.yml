@@ -1,0 +1,69 @@
+services:
+  api:
+    build:
+      context: .
+      target: development
+    entrypoint: ["npm", "run"]
+    command: ["test:e2e"]
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+      JWT_SECRET: test-jwt-secret
+      REFRESH_TOKEN_EXPIRY_DAYS: 30
+      TWO_FACTOR_ENCRYPTION_KEY: test-two-factor-encryption-secret
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: password
+      DATABASE_NAME: facilpay_test
+      DATABASE_SYNCHRONIZE: true
+      LOG_LEVEL: silent
+      LOG_DIR: logs
+      LOG_PRETTY: false
+      LOG_MAX_SIZE: 10m
+      LOG_RETENTION_DAYS: 1
+      LOG_BODY: false
+      LOG_BODY_MAX_LENGTH: 2048
+      LOG_RESPONSE_BODY: false
+      SERVICE_NAME: facilpay-api-test
+      STELLAR_NETWORK: TESTNET
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      STELLAR_BASE_FEE: 100
+      STELLAR_SOURCE_SECRET: SDDXHTY4XQVTVALOYRP6NA2ST4BRPIWSFEJE332XBXWQ76HCNM6IHYSG
+      SMTP_HOST: smtp.ethereal.email
+      SMTP_PORT: 587
+      SMTP_SECURE: false
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: '"FacilPay" <noreply@facilpay.com>'
+      APP_URL: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000
+      CORS_CREDENTIALS: true
+      IDEMPOTENCY_TTL_HOURS: 24
+      WEBHOOK_SECRET: test-webhook-secret
+      SUPPORTED_CURRENCIES: USD,EUR,GBP
+    volumes:
+      - .:/app
+      - test_node_modules:/app/node_modules
+      - test_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: facilpay_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d facilpay_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  test_logs:
+  test_node_modules:

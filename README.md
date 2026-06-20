@@ -10,12 +10,40 @@ Backend API built with **NestJS**.
 
 ## 🚀 Requirements
 
-- Node.js 18+ 
-- npm
+- Docker and Docker Compose for the fastest local setup
+- Node.js 18+ and npm for running without Docker
 
 ---
 
-## ⚙️ Setup Instructions
+## Docker Quick Start
+
+Start the API and PostgreSQL with hot reload:
+
+```bash
+docker compose up --build
+```
+
+The API will be available at http://localhost:3000.
+
+Run database migrations inside the API container:
+
+```bash
+docker compose run --rm api migrate
+```
+
+Run E2E tests against a throwaway PostgreSQL database:
+
+```bash
+docker compose -f docker-compose.test.yml run --rm api test:e2e
+```
+
+Stop and remove local containers, networks, and volumes:
+
+```bash
+docker compose down -v
+```
+
+## Local Setup
 
 1. Install dependencies
 ```bash
@@ -33,6 +61,17 @@ npm run start:dev
 ```
  ## The application will be available at:
 http://localhost:3000   
+
+## Common Commands
+
+```bash
+npm run dev
+npm test
+npm run test:e2e
+npm run migrate
+npm run docker:dev
+npm run docker:test:e2e
+```
 
 
 ```md

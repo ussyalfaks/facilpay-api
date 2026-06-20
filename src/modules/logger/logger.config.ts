@@ -52,6 +52,7 @@ export function buildLoggerConfig(configService: ConfigService): LoggerConfig {
 }
 
 export function buildTransportTargets(config: LoggerConfig): TransportTarget[] {
+  const fileTarget = resolveFileTransportTarget();
   const rotationOptions: Record<string, unknown> = {
     frequency: 'daily',
     mkdir: true,
@@ -67,24 +68,26 @@ export function buildTransportTargets(config: LoggerConfig): TransportTarget[] {
 
   const targets: TransportTarget[] = [
     {
-      target: 'pino-roll',
+      target: fileTarget,
       level: config.level,
-      options: {
-        ...rotationOptions,
-        file: join(config.logDir, 'combined.log'),
-      },
+      options: buildFileTransportOptions(
+        fileTarget,
+        join(config.logDir, 'combined.log'),
+        rotationOptions,
+      ),
     },
     {
-      target: 'pino-roll',
+      target: fileTarget,
       level: 'error',
-      options: {
-        ...rotationOptions,
-        file: join(config.logDir, 'error.log'),
-      },
+      options: buildFileTransportOptions(
+        fileTarget,
+        join(config.logDir, 'error.log'),
+        rotationOptions,
+      ),
     },
   ];
 
-  if (config.pretty) {
+  if (config.pretty && isTransportAvailable('pino-pretty')) {
     targets.push({
       target: 'pino-pretty',
       level: config.level,
@@ -98,6 +101,41 @@ export function buildTransportTargets(config: LoggerConfig): TransportTarget[] {
   }
 
   return targets;
+}
+
+function resolveFileTransportTarget(): string {
+  return isTransportAvailable('pino-roll') ? 'pino-roll' : 'pino/file';
+}
+
+function buildFileTransportOptions(
+  target: string,
+  filePath: string,
+  rotationOptions: Record<string, unknown>,
+): Record<string, unknown> {
+  if (target === 'pino-roll') {
+    return {
+      ...rotationOptions,
+      file: filePath,
+    };
+  }
+
+  return {
+    destination: filePath,
+    mkdir: true,
+  };
+}
+
+function isTransportAvailable(target: string): boolean {
+  if (target === 'pino/file') {
+    return true;
+  }
+
+  try {
+    require.resolve(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseBoolean(

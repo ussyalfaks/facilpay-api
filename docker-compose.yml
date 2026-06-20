@@ -1,0 +1,74 @@
+services:
+  api:
+    build:
+      context: .
+      target: development
+    entrypoint: ["npm", "run"]
+    command: ["start:dev"]
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:-local-development-jwt-secret-change-me}
+      REFRESH_TOKEN_EXPIRY_DAYS: ${REFRESH_TOKEN_EXPIRY_DAYS:-30}
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:-local-development-2fa-secret-change-me}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-password}
+      DATABASE_NAME: ${DATABASE_NAME:-facilpay}
+      DATABASE_SYNCHRONIZE: ${DATABASE_SYNCHRONIZE:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      LOG_DIR: ${LOG_DIR:-logs}
+      LOG_PRETTY: ${LOG_PRETTY:-true}
+      LOG_MAX_SIZE: ${LOG_MAX_SIZE:-10m}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-14}
+      LOG_BODY: ${LOG_BODY:-false}
+      LOG_BODY_MAX_LENGTH: ${LOG_BODY_MAX_LENGTH:-2048}
+      LOG_RESPONSE_BODY: ${LOG_RESPONSE_BODY:-false}
+      SERVICE_NAME: ${SERVICE_NAME:-facilpay-api}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-TESTNET}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      STELLAR_BASE_FEE: ${STELLAR_BASE_FEE:-100}
+      STELLAR_SOURCE_SECRET: ${STELLAR_SOURCE_SECRET:-SDDXHTY4XQVTVALOYRP6NA2ST4BRPIWSFEJE332XBXWQ76HCNM6IHYSG}
+      SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-"FacilPay" <noreply@facilpay.com>}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_CREDENTIALS: ${CORS_CREDENTIALS:-true}
+      IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-24}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-development-webhook-secret}
+      SUPPORTED_CURRENCIES: ${SUPPORTED_CURRENCIES:-USD,EUR,GBP}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+      - api_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-facilpay}
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-password}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-postgres} -d ${DATABASE_NAME:-facilpay}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  api_logs:
+  api_node_modules:
+  postgres_data:
