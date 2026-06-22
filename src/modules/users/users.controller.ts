@@ -18,10 +18,13 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from './user.entity';
 import { UserRole } from '../../common/constants/roles';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -65,6 +68,72 @@ export class UsersController {
   })
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me')
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Update current user profile',
+    description:
+      'Updates the authenticated user\'s profile. Supports updating display name and email. If email is changed, email verification is required.',
+  })
+  @ApiBody({
+    type: UpdateUserDto,
+    examples: {
+      updateName: {
+        summary: 'Update display name only',
+        value: { name: 'Jane Doe' },
+      },
+      updateEmail: {
+        summary: 'Update email only',
+        value: { email: 'jane.new@example.com' },
+      },
+      updateBoth: {
+        summary: 'Update both name and email',
+        value: { name: 'Jane Doe', email: 'jane.new@example.com' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Profile updated successfully.',
+    schema: {
+      example: {
+        user: {
+          id: 'abc123',
+          name: 'Jane Doe',
+          email: 'jane.new@example.com',
+          isEmailVerified: false,
+          createdAt: '2026-01-26T10:00:00.000Z',
+          updatedAt: '2026-01-26T12:00:00.000Z',
+        },
+        emailVerificationRequired: true,
+      },
+    },
+  })
+  @ApiConflictResponse({
+    description: 'Email is already taken by another account.',
+    schema: {
+      example: {
+        statusCode: 409,
+        message: 'Email is already taken by another account',
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing/invalid access token.',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+      },
+    },
+  })
+  async updateMe(
+    @CurrentUser() user: User,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.usersService.updateProfile(user.id, updateUserDto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

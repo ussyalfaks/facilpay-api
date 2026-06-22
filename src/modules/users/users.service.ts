@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -87,7 +87,8 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return this.sanitizeUser(user);
+    const { password, ...result } = user;
+    return result;
   }
 
   async findByEmail(email: string): Promise<User | undefined> {
@@ -97,7 +98,9 @@ export class UsersService {
   }
 
   async findByIdWithSecrets(id: string): Promise<User> {
-    const user = this.users.find((user) => user.id === id && !user.deletedAt);
+    const user = await this.userRepository.findOne({
+      where: { id, deletedAt: null },
+    });
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
@@ -115,20 +118,28 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
-    const updates: Partial<User> = { ...updateUserDto };
-    if (updateUserDto.password) {
-      updates.password = await bcrypt.hash(updateUserDto.password, 10);
+    // Check if email is being changed and if it's already taken
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      const existingUser = await this.userRepository.findOne({
+        where: { email: updateUserDto.email, deletedAt: null },
+      });
+      if (existingUser) {
+        throw new ConflictException('Email is already taken by another account');
+      }
+      // Reset email verification if email is changed
+      user.email = updateUserDto.email;
+      user.isEmailVerified = false;
     }
 
-    Object.assign(user, updates);
-    user.updatedAt = new Date();
+    if (updateUserDto.name) {
+      user.name = updateUserDto.name;
+    }
 
+    user.updatedAt = new Date();
     const updatedUser = await this.userRepository.save(user);
     const { password, ...result } = updatedUser;
 
-    const updatedFields = Object.keys(updateUserDto).filter(
-      (key) => key !== 'password',
-    );
+    const updatedFields = Object.keys(updateUserDto);
     if (updatedFields.length > 0) {
       this.logger.info({ userId: result.id, updatedFields }, 'User updated');
     }
@@ -185,6 +196,15 @@ export class UsersService {
     user.updatedAt = new Date();
     await this.userRepository.save(user);
     this.logger.info({ userId: id }, 'User email verified');
+  }
+
+  async updateProfile(
+    id: string,
+    updateUserDto: UpdateUserDto,
+  ): Promise<{ user: Omit<User, 'password'>; emailVerificationRequired: boolean }> {
+    const updatedUser = await this.update(id, updateUserDto);
+    const emailVerificationRequired = updateUserDto.email ? true : false;
+    return { user: updatedUser, emailVerificationRequired };
   }
 
   async updatePassword(id: string, hashedPassword: string): Promise<void> {
