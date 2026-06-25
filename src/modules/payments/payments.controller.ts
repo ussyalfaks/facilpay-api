@@ -11,7 +11,9 @@ import {
   UseInterceptors,
   BadRequestException,
   Headers,
+  Res,
 } from '@nestjs/common';
+
 import {
   ApiTags,
   ApiOperation,
@@ -31,6 +33,13 @@ import {
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { PaymentsService } from './payments.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../../common/constants/roles';
+import { ExportPaymentsDto } from './dto/export-payments.dto';
+import type { Response } from 'express';
+
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { BulkCreatePaymentsResponseDto } from './dto/bulk-create-payments-response.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
@@ -42,7 +51,15 @@ import { WebhookThrottle, BulkThrottle } from '../throttler/throttler.decorator'
 import { WebhookGuard } from './webhook.guard';
 import { IdempotencyInterceptor } from './idempotency.interceptor';
 
+
+
+
+
+
+
+
 @ApiTags('payments')
+
 @Controller('v1/payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) { }
